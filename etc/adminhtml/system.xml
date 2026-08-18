@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Config:etc/system_file.xsd">
+    <system>
+        <tab id="brocode" translate="label" sortOrder="400">
+            <label>BroCode</label>
+        </tab>
+        <section id="brocode_config_explorer" translate="label" type="text" sortOrder="10"
+                 showInDefault="1" showInWebsite="0" showInStore="0">
+            <class>separator-top</class>
+            <label>Config Data Explorer</label>
+            <tab>brocode</tab>
+            <resource>BroCode_ConfigExplorer::config_explorer</resource>
+            <group id="general" translate="label" type="text" sortOrder="10" showInDefault="1">
+                <label>General</label>
+                <field id="allow_encrypted_reveal" translate="label comment" type="select"
+                       sortOrder="10" showInDefault="1" canRestore="1">
+                    <label>Allow Encrypted Value Reveal (REST)</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment><![CDATA[Site-wide kill switch for the REST endpoint's <code>revealEncrypted</code> parameter. While this is No, no caller receives plaintext for an encrypted field, whatever their role. Turning it Yes only opens the door: the caller still needs the "Reveal Encrypted Config Values (REST)" ACL resource and must ask for plaintext explicitly. The admin grid never reveals, regardless of this setting.]]></comment>
+                </field>
+            </group>
+        </section>
+    </system>
+</config>

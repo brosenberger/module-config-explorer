@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Webapi:etc/webapi.xsd">
+    <route url="/V1/config-explorer/config" method="GET">
+        <service class="BroCode\ConfigExplorer\Api\ConfigEntryRepositoryInterface" method="getList"/>
+        <resources>
+            <resource ref="BroCode_ConfigExplorer::config_explorer"/>
+        </resources>
+    </route>
+</routes>

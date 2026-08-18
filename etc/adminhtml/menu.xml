@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Backend:etc/menu.xsd">
+    <menu>
+        <add id="BroCode_ConfigExplorer::config_explorer"
+             title="Config Data Explorer"
+             translate="title"
+             module="BroCode_ConfigExplorer"
+             sortOrder="90"
+             parent="Magento_Config::system_config"
+             action="brocode_configexplorer/index/index"
+             resource="BroCode_ConfigExplorer::config_explorer"/>
+    </menu>
+</config>

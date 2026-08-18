@@ -1,0 +1,114 @@
+<?xml version="1.0"?>
+<listing xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Ui:etc/ui_configuration.xsd">
+    <argument name="data" xsi:type="array">
+        <item name="js_config" xsi:type="array">
+            <item name="provider" xsi:type="string">brocode_configexplorer_listing.brocode_configexplorer_listing_data_source</item>
+        </item>
+    </argument>
+    <settings>
+        <spinner>brocode_configexplorer_columns</spinner>
+        <deps>
+            <dep>brocode_configexplorer_listing.brocode_configexplorer_listing_data_source</dep>
+        </deps>
+    </settings>
+    <dataSource name="brocode_configexplorer_listing_data_source" component="Magento_Ui/js/grid/provider">
+        <settings>
+            <updateUrl path="mui/index/render"/>
+        </settings>
+        <aclResource>BroCode_ConfigExplorer::config_explorer</aclResource>
+        <dataProvider class="BroCode\ConfigExplorer\Model\DataProvider"
+                      name="brocode_configexplorer_listing_data_source">
+            <settings>
+                <requestFieldName>id</requestFieldName>
+                <primaryFieldName>config_id</primaryFieldName>
+            </settings>
+        </dataProvider>
+    </dataSource>
+    <listingToolbar name="listing_top">
+        <settings>
+            <sticky>true</sticky>
+        </settings>
+        <bookmark name="bookmarks"/>
+        <columnsControls name="columns_controls"/>
+        <filters name="listing_filters"/>
+        <paging name="listing_paging"/>
+    </listingToolbar>
+    <columns name="brocode_configexplorer_columns">
+        <settings>
+            <childDefaults>
+                <param name="fieldAction" xsi:type="array">
+                    <item name="provider" xsi:type="string">brocode_configexplorer_listing.brocode_configexplorer_listing.brocode_configexplorer_columns</item>
+                </param>
+            </childDefaults>
+        </settings>
+        <column name="config_id" sortOrder="10">
+            <settings>
+                <filter>textRange</filter>
+                <label translate="true">ID</label>
+                <sorting>asc</sorting>
+            </settings>
+        </column>
+        <column name="path" sortOrder="20">
+            <settings>
+                <filter>text</filter>
+                <label translate="true">Path</label>
+            </settings>
+        </column>
+        <column name="scope" sortOrder="30" component="Magento_Ui/js/grid/columns/select">
+            <settings>
+                <filter>select</filter>
+                <dataType>select</dataType>
+                <label translate="true">Scope</label>
+                <options>
+                    <option name="default" xsi:type="array">
+                        <item name="value" xsi:type="string">default</item>
+                        <item name="label" xsi:type="string" translate="true">Default</item>
+                    </option>
+                    <option name="websites" xsi:type="array">
+                        <item name="value" xsi:type="string">websites</item>
+                        <item name="label" xsi:type="string" translate="true">Websites</item>
+                    </option>
+                    <option name="stores" xsi:type="array">
+                        <item name="value" xsi:type="string">stores</item>
+                        <item name="label" xsi:type="string" translate="true">Stores</item>
+                    </option>
+                </options>
+            </settings>
+        </column>
+        <column name="scope_id" sortOrder="40">
+            <settings>
+                <filter>textRange</filter>
+                <label translate="true">Scope ID</label>
+            </settings>
+        </column>
+        <column name="value" sortOrder="50">
+            <settings>
+                <filter>text</filter>
+                <label translate="true">Value</label>
+            </settings>
+        </column>
+        <!--
+            is_encrypted is computed per row in the data provider, not a core_config_data
+            column. It carries no filter and no sorting on purpose: either would push an
+            unknown column into the SQL and break the grid.
+        -->
+        <column name="is_encrypted" sortOrder="60" component="Magento_Ui/js/grid/columns/select">
+            <settings>
+                <dataType>select</dataType>
+                <label translate="true">Encrypted</label>
+                <sortable>false</sortable>
+                <options>
+                    <option name="yes" xsi:type="array">
+                        <item name="value" xsi:type="string">1</item>
+                        <item name="label" xsi:type="string" translate="true">Yes</item>
+                    </option>
+                    <option name="no" xsi:type="array">
+                        <item name="value" xsi:type="string">0</item>
+                        <item name="label" xsi:type="string" translate="true">No</item>
+                    </option>
+                </options>
+            </settings>
+        </column>
+    </columns>
+</listing>
