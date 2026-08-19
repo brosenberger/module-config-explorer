@@ -26,7 +26,6 @@
  * @link https://brocode.at
  */
 declare(strict_types=1);
-declare(strict_types=1);
 
 namespace BroCode\ConfigExplorer\Model;
 
@@ -37,6 +36,7 @@ use BroCode\ConfigExplorer\Model\Config\EncryptedPathResolver;
 use BroCode\ConfigExplorer\Model\ResourceModel\ConfigData\CollectionFactory;
 use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Framework\AuthorizationInterface;
+use Magento\Framework\Encryption\EncryptorInterface;
 use Magento\Framework\Exception\AuthorizationException;
 
 class ConfigEntryRepository implements ConfigEntryRepositoryInterface
@@ -80,18 +80,25 @@ class ConfigEntryRepository implements ConfigEntryRepositoryInterface
      */
     private $scopeConfig;
 
+    /**
+     * @var EncryptorInterface
+     */
+    private $encryptor;
+
     public function __construct(
         CollectionFactory $collectionFactory,
         ConfigEntryInterfaceFactory $configEntryFactory,
         EncryptedPathResolver $encryptedPathResolver,
         AuthorizationInterface $authorization,
-        ScopeConfigInterface $scopeConfig
+        ScopeConfigInterface $scopeConfig,
+        EncryptorInterface $encryptor
     ) {
         $this->collectionFactory = $collectionFactory;
         $this->configEntryFactory = $configEntryFactory;
         $this->encryptedPathResolver = $encryptedPathResolver;
         $this->authorization = $authorization;
         $this->scopeConfig = $scopeConfig;
+        $this->encryptor = $encryptor;
     }
 
     /**
@@ -130,6 +137,12 @@ class ConfigEntryRepository implements ConfigEntryRepositoryInterface
 
             if ($isEncrypted && !$revealEncrypted) {
                 $value = self::REDACTED_PLACEHOLDER;
+            } elseif ($isEncrypted && $revealEncrypted) {
+                // Encryptor::decrypt() returns '' rather than throwing when the key
+                // version the ciphertext asks for is missing (e.g. after a key
+                // rotation) - that empty string is indistinguishable here from a
+                // genuinely empty value.
+                $value = $rawValue === null ? null : $this->encryptor->decrypt((string)$rawValue);
             } else {
                 $value = $rawValue === null ? null : (string)$rawValue;
             }
