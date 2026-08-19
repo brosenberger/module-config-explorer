@@ -5,4 +5,21 @@
                 type="BroCode\ConfigExplorer\Model\ConfigEntryRepository"/>
     <preference for="BroCode\ConfigExplorer\Api\Data\ConfigEntryInterface"
                 type="BroCode\ConfigExplorer\Model\Data\ConfigEntry"/>
+    <type name="BroCode\ConfigExplorer\Model\Config\EncryptedPathResolver">
+        <arguments>
+            <!--
+                Magento\Config\Model\Config\Structure\Data's default binding resolves
+                its configScope to the CURRENT request area. In the adminhtml area that
+                correctly merges every module's etc/adminhtml/system.xml, but this
+                resolver is also called from the REST controller, which runs in the
+                webapi_rest area — an area with no system.xml files of its own, so the
+                default binding silently returns zero sections there and every field
+                reads as unencrypted. adminhtmlConfigStructureData is core's own fix for
+                exactly this: it pins configScope to a fixed 'adminhtml' Scope instance
+                (see magento2-base/app/etc/di.xml, virtualType adminhtmlConfigScope),
+                so the merge is identical no matter which area the caller runs in.
+            -->
+            <argument name="structureData" xsi:type="object">adminhtmlConfigStructureData</argument>
+        </arguments>
+    </type>
 </config>
