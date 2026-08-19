@@ -26,7 +26,6 @@
  * @link https://brocode.at
  */
 declare(strict_types=1);
-declare(strict_types=1);
 
 namespace BroCode\ConfigExplorer\Model\ResourceModel\ConfigData;
 
