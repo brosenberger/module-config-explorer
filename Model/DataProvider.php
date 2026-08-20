@@ -30,9 +30,11 @@ declare(strict_types=1);
 namespace BroCode\ConfigExplorer\Model;
 
 use BroCode\ConfigExplorer\Model\Config\EncryptedPathResolver;
+use BroCode\ConfigExplorer\Model\Config\StoreScopeResolver;
 use BroCode\ConfigExplorer\Model\Config\ValueOriginResolver;
 use BroCode\ConfigExplorer\Model\ResourceModel\ConfigData\CollectionFactory;
 use Magento\Framework\Api\Filter;
+use Magento\Framework\App\RequestInterface;
 use Magento\Ui\DataProvider\AbstractDataProvider;
 
 /**
@@ -42,6 +44,13 @@ use Magento\Ui\DataProvider\AbstractDataProvider;
  * redacts, whatever the current user's ACL says. Plaintext stays behind an explicit
  * API call that leaves a trace, rather than a checkbox somebody leaves on in a shared
  * admin session.
+ *
+ * Two independent, coexisting ways to scope the grid: the AJAX "Effective Scope"
+ * toolbar filter (addFilter() below), and the classic Magento\Backend\Block\Store\
+ * Switcher in the page header - the same block the admin Dashboard uses - which
+ * communicates by a full page reload setting a "store" request param rather than an
+ * AJAX filter request. The constructor reads that param directly, once, since the
+ * switcher block itself has no way to reach into this class's own filter cycle.
  */
 class DataProvider extends AbstractDataProvider
 {
@@ -51,7 +60,15 @@ class DataProvider extends AbstractDataProvider
      */
     private const EFFECTIVE_SCOPE_FIELD = 'effective_scope';
 
+    /**
+     * Request param Magento\Backend\Block\Store\Switcher writes on reload, using its
+     * own default store_var_name - see the block's getStoreVarName().
+     */
+    private const STORE_SWITCHER_PARAM = 'store';
+
     private const SCOPE_DEFAULT = 'default';
+    private const SCOPE_WEBSITE = 'websites';
+    private const SCOPE_STORE = 'stores';
 
     private const ORIGIN_DATABASE_LABEL = 'Database';
 
@@ -66,12 +83,19 @@ class DataProvider extends AbstractDataProvider
     private $valueOriginResolver;
 
     /**
+     * @var StoreScopeResolver
+     */
+    private $storeScopeResolver;
+
+    /**
      * @param string $name
      * @param string $primaryFieldName
      * @param string $requestFieldName
      * @param CollectionFactory $collectionFactory
      * @param EncryptedPathResolver $encryptedPathResolver
      * @param ValueOriginResolver $valueOriginResolver
+     * @param StoreScopeResolver $storeScopeResolver
+     * @param RequestInterface $request
      * @param array $meta
      * @param array $data
      */
@@ -82,6 +106,8 @@ class DataProvider extends AbstractDataProvider
         CollectionFactory $collectionFactory,
         EncryptedPathResolver $encryptedPathResolver,
         ValueOriginResolver $valueOriginResolver,
+        StoreScopeResolver $storeScopeResolver,
+        RequestInterface $request,
         array $meta = [],
         array $data = []
     ) {
@@ -89,6 +115,12 @@ class DataProvider extends AbstractDataProvider
         $this->collection = $collectionFactory->create();
         $this->encryptedPathResolver = $encryptedPathResolver;
         $this->valueOriginResolver = $valueOriginResolver;
+        $this->storeScopeResolver = $storeScopeResolver;
+
+        $storeId = (int)$request->getParam(self::STORE_SWITCHER_PARAM);
+        if ($storeId > 0) {
+            $this->collection->filterByEffectiveScope(self::SCOPE_STORE, $storeId);
+        }
     }
 
     /**
@@ -129,9 +161,31 @@ class DataProvider extends AbstractDataProvider
             // origin_source being null ("nothing to show"), but the grid column
             // needs a non-empty label for every row, "Database" included.
             $data['items'][$key]['origin_label'] = $origin !== null ? $origin->getFileName() : self::ORIGIN_DATABASE_LABEL;
+            $data['items'][$key]['scope_code'] = $this->resolveScopeCode(
+                (string)($item['scope'] ?? ''),
+                (int)($item['scope_id'] ?? 0)
+            );
         }
 
         return $data;
+    }
+
+    /**
+     * The website/store code behind a row's scope_id, or null for default scope
+     * (which has no code of its own) or a scope_id that no longer resolves (a stale
+     * row left behind by a deleted website/store).
+     */
+    private function resolveScopeCode(string $scope, int $scopeId): ?string
+    {
+        if ($scope === self::SCOPE_WEBSITE) {
+            return $this->storeScopeResolver->getWebsiteCode($scopeId);
+        }
+
+        if ($scope === self::SCOPE_STORE) {
+            return $this->storeScopeResolver->getStoreCode($scopeId);
+        }
+
+        return null;
     }
 
     /**

@@ -30,6 +30,7 @@ declare(strict_types=1);
 namespace BroCode\ConfigExplorer\Test\Unit\Model;
 
 use BroCode\ConfigExplorer\Model\Config\EncryptedPathResolver;
+use BroCode\ConfigExplorer\Model\Config\StoreScopeResolver;
 use BroCode\ConfigExplorer\Model\Config\ValueOrigin;
 use BroCode\ConfigExplorer\Model\Config\ValueOriginResolver;
 use BroCode\ConfigExplorer\Model\ConfigEntryRepository;
@@ -37,15 +38,19 @@ use BroCode\ConfigExplorer\Model\DataProvider;
 use BroCode\ConfigExplorer\Model\ResourceModel\ConfigData\Collection;
 use BroCode\ConfigExplorer\Model\ResourceModel\ConfigData\CollectionFactory;
 use Magento\Framework\Api\Filter;
+use Magento\Framework\App\RequestInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Covers the two things DataProvider adds on top of the raw collection data: the
- * per-row origin enrichment in getData() (and its interaction with the existing
- * encrypted-value redaction), and the addFilter() override that routes the scope
- * switcher's virtual "effective_scope" field to Collection::filterByEffectiveScope()
- * instead of the default addFieldToFilter() path (which has no such column).
+ * Covers the three things DataProvider adds on top of the raw collection data: the
+ * per-row origin/scope-code enrichment in getData() (and its interaction with the
+ * existing encrypted-value redaction), the addFilter() override that routes the
+ * AJAX scope switcher's virtual "effective_scope" field to Collection::
+ * filterByEffectiveScope() instead of the default addFieldToFilter() path (which has
+ * no such column), and the constructor reading the classic page-header store
+ * switcher's "store" request param (a full-reload mechanism, independent of the
+ * AJAX filter cycle - see Magento\Backend\Block\Store\Switcher).
  */
 class DataProviderTest extends TestCase
 {
@@ -148,6 +153,71 @@ class DataProviderTest extends TestCase
         );
     }
 
+    public function testDefaultScopeRowHasNoScopeCode(): void
+    {
+        $collection = $this->collectionReturning([
+            ['config_id' => 1, 'path' => 'general/locale/code', 'scope' => 'default', 'scope_id' => 0, 'value' => 'en_US'],
+        ]);
+
+        $storeScopeResolver = $this->createMock(StoreScopeResolver::class);
+        $storeScopeResolver->expects(self::never())->method('getWebsiteCode');
+        $storeScopeResolver->expects(self::never())->method('getStoreCode');
+
+        $data = $this->provider($collection, false, null, $storeScopeResolver)->getData();
+
+        self::assertNull($data['items'][0]['scope_code']);
+    }
+
+    public function testWebsiteScopeRowResolvesWebsiteCode(): void
+    {
+        $collection = $this->collectionReturning([
+            ['config_id' => 1, 'path' => 'web/unsecure/base_url', 'scope' => 'websites', 'scope_id' => 1, 'value' => 'x'],
+        ]);
+
+        $storeScopeResolver = $this->createMock(StoreScopeResolver::class);
+        $storeScopeResolver->method('getWebsiteCode')->with(1)->willReturn('base');
+
+        $data = $this->provider($collection, false, null, $storeScopeResolver)->getData();
+
+        self::assertSame('base', $data['items'][0]['scope_code']);
+    }
+
+    public function testStoreScopeRowResolvesStoreCode(): void
+    {
+        $collection = $this->collectionReturning([
+            ['config_id' => 1, 'path' => 'web/unsecure/base_url', 'scope' => 'stores', 'scope_id' => 2, 'value' => 'x'],
+        ]);
+
+        $storeScopeResolver = $this->createMock(StoreScopeResolver::class);
+        $storeScopeResolver->method('getStoreCode')->with(2)->willReturn('zurich_view');
+
+        $data = $this->provider($collection, false, null, $storeScopeResolver)->getData();
+
+        self::assertSame('zurich_view', $data['items'][0]['scope_code']);
+    }
+
+    public function testStoreSwitcherRequestParamFiltersByThatStore(): void
+    {
+        $collection = $this->collectionReturning([]);
+        $collection->expects(self::once())->method('filterByEffectiveScope')->with('stores', 2);
+
+        $request = $this->createMock(RequestInterface::class);
+        $request->method('getParam')->with('store')->willReturn('2');
+
+        $this->provider($collection, false, null, null, $request);
+    }
+
+    public function testNoStoreSwitcherRequestParamAppliesNoFilter(): void
+    {
+        $collection = $this->collectionReturning([]);
+        $collection->expects(self::never())->method('filterByEffectiveScope');
+
+        $request = $this->createMock(RequestInterface::class);
+        $request->method('getParam')->with('store')->willReturn(null);
+
+        $this->provider($collection, false, null, null, $request);
+    }
+
     /**
      * @return Collection&MockObject
      */
@@ -166,8 +236,13 @@ class DataProviderTest extends TestCase
         return $collection;
     }
 
-    private function provider(Collection $collection, bool $isEncrypted, ?ValueOrigin $origin): DataProvider
-    {
+    private function provider(
+        Collection $collection,
+        bool $isEncrypted,
+        ?ValueOrigin $origin,
+        ?StoreScopeResolver $storeScopeResolver = null,
+        ?RequestInterface $request = null
+    ): DataProvider {
         $collectionFactory = $this->createMock(CollectionFactory::class);
         $collectionFactory->method('create')->willReturn($collection);
 
@@ -177,13 +252,20 @@ class DataProviderTest extends TestCase
         $valueOriginResolver = $this->createMock(ValueOriginResolver::class);
         $valueOriginResolver->method('resolve')->willReturn($origin);
 
+        if ($request === null) {
+            $request = $this->createMock(RequestInterface::class);
+            $request->method('getParam')->willReturn(null);
+        }
+
         return new DataProvider(
             'brocode_configexplorer_listing_data_source',
             'config_id',
             'id',
             $collectionFactory,
             $encryptedPathResolver,
-            $valueOriginResolver
+            $valueOriginResolver,
+            $storeScopeResolver ?? $this->createMock(StoreScopeResolver::class),
+            $request
         );
     }
 }

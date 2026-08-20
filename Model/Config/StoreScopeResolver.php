@@ -29,10 +29,14 @@ declare(strict_types=1);
 
 namespace BroCode\ConfigExplorer\Model\Config;
 
+use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Store\Api\StoreRepositoryInterface;
+use Magento\Store\Api\WebsiteRepositoryInterface;
 
 /**
- * Resolves website/store-view scope relationships for the grid's scope filter.
+ * Resolves website/store-view scope relationships for the grid: which stores belong
+ * to a website (and vice versa) for the scope filter, and the human-readable code
+ * behind a scope_id for the grid's Scope Code column.
  *
  * WebsiteInterface has no getStoreIds() of its own, so the website->stores direction
  * is derived by scanning StoreRepositoryInterface::getList() and matching
@@ -47,9 +51,15 @@ class StoreScopeResolver
      */
     private $storeRepository;
 
-    public function __construct(StoreRepositoryInterface $storeRepository)
+    /**
+     * @var WebsiteRepositoryInterface
+     */
+    private $websiteRepository;
+
+    public function __construct(StoreRepositoryInterface $storeRepository, WebsiteRepositoryInterface $websiteRepository)
     {
         $this->storeRepository = $storeRepository;
+        $this->websiteRepository = $websiteRepository;
     }
 
     /**
@@ -71,5 +81,28 @@ class StoreScopeResolver
     public function getWebsiteIdForStore(int $storeId): int
     {
         return (int)$this->storeRepository->getById($storeId)->getWebsiteId();
+    }
+
+    /**
+     * Null rather than an exception for a scope_id that no longer resolves - a stale
+     * core_config_data row for a deleted website/store is a display concern here, not
+     * something worth failing the whole grid over.
+     */
+    public function getWebsiteCode(int $websiteId): ?string
+    {
+        try {
+            return $this->websiteRepository->getById($websiteId)->getCode();
+        } catch (NoSuchEntityException $exception) {
+            return null;
+        }
+    }
+
+    public function getStoreCode(int $storeId): ?string
+    {
+        try {
+            return $this->storeRepository->getById($storeId)->getCode();
+        } catch (NoSuchEntityException $exception) {
+            return null;
+        }
     }
 }

@@ -2,6 +2,22 @@
 <page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
       xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
     <body>
+        <referenceContainer name="page.main.actions">
+            <!--
+                Same block, same defaults (store-view switching only, no confirm dialog)
+                as Magento_Backend's own admin Dashboard - see
+                vendor/magento/module-backend/view/adminhtml/layout/adminhtml_dashboard_index.xml.
+                A full page reload, not the grid's own AJAX filter cycle: DataProvider
+                reads the resulting "store" request param directly - see
+                Model/DataProvider.php's storeScopeResolver-independent request handling.
+            -->
+            <block class="Magento\Backend\Block\Store\Switcher" name="store_switcher" as="store_switcher"
+                   template="Magento_Backend::store/switcher.phtml">
+                <action method="setUseConfirm">
+                    <argument name="params" xsi:type="string">0</argument>
+                </action>
+            </block>
+        </referenceContainer>
         <referenceContainer name="content">
             <uiComponent name="brocode_configexplorer_listing"/>
         </referenceContainer>

@@ -94,6 +94,18 @@
                 <label translate="true">Scope ID</label>
             </settings>
         </column>
+        <!--
+            scope_code is computed per row in the data provider, not a core_config_data
+            column - see DataProvider::resolveScopeCode(). Null (blank cell) for default
+            scope, which has no code of its own. No filter/sort for the same reason
+            is_encrypted/origin_label have none.
+        -->
+        <column name="scope_code" sortOrder="45">
+            <settings>
+                <label translate="true">Scope Code</label>
+                <sortable>false</sortable>
+            </settings>
+        </column>
         <column name="value" sortOrder="50" component="BroCode_ConfigExplorer/js/grid/columns/value-with-origin">
             <settings>
                 <filter>text</filter>
