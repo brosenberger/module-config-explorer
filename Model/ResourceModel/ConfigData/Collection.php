@@ -46,4 +46,21 @@ class Collection extends AbstractCollection
             \BroCode\ConfigExplorer\Model\ResourceModel\ConfigData::class
         );
     }
+
+    /**
+     * Break ties on the sorted column with the primary key so LIMIT/OFFSET paging stays
+     * deterministic. Without this, sorting by a non-unique column (path, scope, value)
+     * can return the same row on two pages while another row is skipped.
+     *
+     * @return $this
+     */
+    protected function _renderOrders()
+    {
+        $idField = $this->getResource()->getIdFieldName();
+        if (!isset($this->_orders[$idField])) {
+            $this->_orders[$idField] = self::SORT_ORDER_ASC;
+        }
+
+        return parent::_renderOrders();
+    }
 }

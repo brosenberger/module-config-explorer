@@ -14,6 +14,9 @@
     </settings>
     <dataSource name="brocode_configexplorer_listing_data_source" component="Magento_Ui/js/grid/provider">
         <settings>
+            <storageConfig>
+                <param name="indexField" xsi:type="string">config_id</param>
+            </storageConfig>
             <updateUrl path="mui/index/render"/>
         </settings>
         <aclResource>BroCode_ConfigExplorer::config_explorer</aclResource>
