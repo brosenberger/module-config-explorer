@@ -32,6 +32,8 @@ namespace BroCode\ConfigExplorer\Test\Unit\Model;
 use BroCode\ConfigExplorer\Api\Data\ConfigEntryInterface;
 use BroCode\ConfigExplorer\Api\Data\ConfigEntryInterfaceFactory;
 use BroCode\ConfigExplorer\Model\Config\EncryptedPathResolver;
+use BroCode\ConfigExplorer\Model\Config\ValueOrigin;
+use BroCode\ConfigExplorer\Model\Config\ValueOriginResolver;
 use BroCode\ConfigExplorer\Model\ConfigEntryRepository;
 use BroCode\ConfigExplorer\Model\Data\ConfigEntry;
 use BroCode\ConfigExplorer\Model\ResourceModel\ConfigData\Collection;
@@ -64,6 +66,7 @@ class ConfigEntryRepositoryTest extends TestCase
     private CollectionFactory&MockObject $collectionFactory;
     private ConfigEntryInterfaceFactory&MockObject $entryFactory;
     private EncryptedPathResolver&MockObject $resolver;
+    private ValueOriginResolver&MockObject $originResolver;
     private AuthorizationInterface&MockObject $authorization;
     private ScopeConfigInterface&MockObject $scopeConfig;
     private EncryptorInterface&MockObject $encryptor;
@@ -76,6 +79,10 @@ class ConfigEntryRepositoryTest extends TestCase
             static fn (): ConfigEntryInterface => new ConfigEntry()
         );
         $this->resolver = $this->createMock(EncryptedPathResolver::class);
+        // No file shadows anything unless a test says otherwise - matches every row
+        // having no core_config_data-only equivalent in a fresh install.
+        $this->originResolver = $this->createMock(ValueOriginResolver::class);
+        $this->originResolver->method('resolve')->willReturn(null);
         $this->authorization = $this->createMock(AuthorizationInterface::class);
         $this->scopeConfig = $this->createMock(ScopeConfigInterface::class);
         $this->encryptor = $this->createMock(EncryptorInterface::class);
@@ -87,6 +94,7 @@ class ConfigEntryRepositoryTest extends TestCase
             $this->collectionFactory,
             $this->entryFactory,
             $this->resolver,
+            $this->originResolver,
             $this->authorization,
             $this->scopeConfig,
             $this->encryptor
@@ -182,5 +190,74 @@ class ConfigEntryRepositoryTest extends TestCase
         $this->expectExceptionMessage('not allowed to reveal');
 
         $this->repository()->getList(self::PATH, null, null, true);
+    }
+
+    public function testRowWithoutOriginReportsNoShadowing(): void
+    {
+        $this->givenOneRow('general/locale/code', 'en_US');
+        $this->resolver->method('isEncrypted')->willReturn(false);
+
+        $entries = $this->repository()->getList('general/locale/code');
+
+        self::assertSame('en_US', $entries[0]->getValue());
+        self::assertNull($entries[0]->getDbValue());
+        self::assertNull($entries[0]->getOriginSource());
+    }
+
+    public function testOriginNotEncryptedReturnsEffectiveValueAndShadowedDbValue(): void
+    {
+        $this->givenOneRow('web/unsecure/base_url', 'https://db-value.test/');
+        $this->resolver->method('isEncrypted')->willReturn(false);
+        $this->originResolver = $this->createMock(ValueOriginResolver::class);
+        $this->originResolver->method('resolve')
+            ->willReturn(new ValueOrigin('app_env', 'env.php', 'https://env-value.test/'));
+
+        $entries = $this->repository()->getList('web/unsecure/base_url');
+
+        self::assertSame('https://env-value.test/', $entries[0]->getValue());
+        self::assertSame('https://db-value.test/', $entries[0]->getDbValue());
+        self::assertSame('env.php', $entries[0]->getOriginSource());
+    }
+
+    public function testOriginEncryptedRedactsBothValuesByDefault(): void
+    {
+        $this->givenOneRow(self::PATH, self::CIPHERTEXT);
+        $this->resolver->method('isEncrypted')->willReturn(true);
+        $this->originResolver = $this->createMock(ValueOriginResolver::class);
+        $this->originResolver->method('resolve')
+            ->willReturn(new ValueOrigin('app_env', 'env.php', 'ciphertext-in-env'));
+        $this->encryptor->expects(self::never())->method('decrypt');
+
+        $entries = $this->repository()->getList(self::PATH);
+
+        self::assertSame('***', $entries[0]->getValue());
+        self::assertSame('***', $entries[0]->getDbValue());
+        self::assertSame('env.php', $entries[0]->getOriginSource());
+    }
+
+    /**
+     * With reveal granted, the value actually in effect (the file's ciphertext) is
+     * decrypted for getValue() - and separately, the shadowed DB row's own
+     * ciphertext is decrypted for getDbValue() too, rather than leaving one of the
+     * two redacted once the caller is authorized to see plaintext at all.
+     */
+    public function testOriginEncryptedDecryptsBothValuesWhenRevealIsGranted(): void
+    {
+        $this->givenOneRow(self::PATH, self::CIPHERTEXT);
+        $this->resolver->method('isEncrypted')->willReturn(true);
+        $this->scopeConfig->method('isSetFlag')->willReturn(true);
+        $this->authorization->method('isAllowed')->willReturn(true);
+        $this->originResolver = $this->createMock(ValueOriginResolver::class);
+        $this->originResolver->method('resolve')
+            ->willReturn(new ValueOrigin('app_env', 'env.php', 'env-ciphertext'));
+        $this->encryptor->method('decrypt')->willReturnMap([
+            ['env-ciphertext', 'env-plaintext-secret'],
+            [self::CIPHERTEXT, 'db-plaintext-secret'],
+        ]);
+
+        $entries = $this->repository()->getList(self::PATH, null, null, true);
+
+        self::assertSame('env-plaintext-secret', $entries[0]->getValue());
+        self::assertSame('db-plaintext-secret', $entries[0]->getDbValue());
     }
 }

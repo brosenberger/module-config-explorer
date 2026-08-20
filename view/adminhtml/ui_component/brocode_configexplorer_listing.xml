@@ -34,7 +34,16 @@
         </settings>
         <bookmark name="bookmarks"/>
         <columnsControls name="columns_controls"/>
-        <filters name="listing_filters"/>
+        <filters name="listing_filters">
+            <filterSelect name="effective_scope" provider="${ $.parentName }">
+                <settings>
+                    <captionValue></captionValue>
+                    <options class="BroCode\ConfigExplorer\Model\Config\ScopeOptions"/>
+                    <label translate="true">Effective Scope</label>
+                    <dataScope>effective_scope</dataScope>
+                </settings>
+            </filterSelect>
+        </filters>
         <paging name="listing_paging"/>
     </listingToolbar>
     <columns name="brocode_configexplorer_columns">
@@ -85,9 +94,10 @@
                 <label translate="true">Scope ID</label>
             </settings>
         </column>
-        <column name="value" sortOrder="50">
+        <column name="value" sortOrder="50" component="BroCode_ConfigExplorer/js/grid/columns/value-with-origin">
             <settings>
                 <filter>text</filter>
+                <bodyTmpl>BroCode_ConfigExplorer/grid/cells/value-with-origin</bodyTmpl>
                 <label translate="true">Value</label>
             </settings>
         </column>
@@ -111,6 +121,21 @@
                         <item name="label" xsi:type="string" translate="true">No</item>
                     </option>
                 </options>
+            </settings>
+        </column>
+        <!--
+            origin_label is computed per row in the data provider, not a core_config_data
+            column - see DataProvider::getData(). "Database" for an unshadowed row,
+            otherwise the deployment-config file (config.php / env.php / any other file a
+            module registers) actually serving the value, so a config mishap traced to
+            "why isn't my change taking effect" is visible at a glance. No filter/sort for
+            the same reason is_encrypted has none: either would push an unknown column
+            into the SQL and break the grid.
+        -->
+        <column name="origin_label" sortOrder="70">
+            <settings>
+                <label translate="true">Origin</label>
+                <sortable>false</sortable>
             </settings>
         </column>
     </columns>

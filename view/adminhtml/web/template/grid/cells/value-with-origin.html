@@ -1,0 +1,11 @@
+<!--
+/**
+ * Copyright (C) 2026 Benjamin Rosenberger <bensch.rosenberger@gmail.com>
+ * @license MIT
+ * @link https://brocode.at
+ */
+-->
+<div class="data-grid-cell-content" text="$col.getLabel($row())"></div>
+<!-- ko if: $row().origin_source -->
+<span class="brocode-config-explorer-origin-icon" style="cursor: help; margin-left: 4px;" attr="{title: $col.getOriginTooltip($row())}">&#9432;</span>
+<!-- /ko -->

@@ -33,12 +33,21 @@ use BroCode\ConfigExplorer\Api\ConfigEntryRepositoryInterface;
 use BroCode\ConfigExplorer\Api\Data\ConfigEntryInterface;
 use BroCode\ConfigExplorer\Api\Data\ConfigEntryInterfaceFactory;
 use BroCode\ConfigExplorer\Model\Config\EncryptedPathResolver;
+use BroCode\ConfigExplorer\Model\Config\ValueOrigin;
+use BroCode\ConfigExplorer\Model\Config\ValueOriginResolver;
 use BroCode\ConfigExplorer\Model\ResourceModel\ConfigData\CollectionFactory;
 use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Framework\AuthorizationInterface;
 use Magento\Framework\Encryption\EncryptorInterface;
 use Magento\Framework\Exception\AuthorizationException;
 
+/**
+ * getList() mirrors the effective value Magento actually serves, the same way the
+ * admin grid does (see DataProvider::getData()) - a core_config_data row shadowed by
+ * app/etc/config.php or app/etc/env.php reports the file's value, not the DB row's,
+ * with the DB row surfaced separately via getDbValue()/getOriginSource() so a caller
+ * can tell the two apart instead of silently getting a value nobody actually uses.
+ */
 class ConfigEntryRepository implements ConfigEntryRepositoryInterface
 {
     /**
@@ -71,6 +80,11 @@ class ConfigEntryRepository implements ConfigEntryRepositoryInterface
     private $encryptedPathResolver;
 
     /**
+     * @var ValueOriginResolver
+     */
+    private $valueOriginResolver;
+
+    /**
      * @var AuthorizationInterface
      */
     private $authorization;
@@ -89,6 +103,7 @@ class ConfigEntryRepository implements ConfigEntryRepositoryInterface
         CollectionFactory $collectionFactory,
         ConfigEntryInterfaceFactory $configEntryFactory,
         EncryptedPathResolver $encryptedPathResolver,
+        ValueOriginResolver $valueOriginResolver,
         AuthorizationInterface $authorization,
         ScopeConfigInterface $scopeConfig,
         EncryptorInterface $encryptor
@@ -96,6 +111,7 @@ class ConfigEntryRepository implements ConfigEntryRepositoryInterface
         $this->collectionFactory = $collectionFactory;
         $this->configEntryFactory = $configEntryFactory;
         $this->encryptedPathResolver = $encryptedPathResolver;
+        $this->valueOriginResolver = $valueOriginResolver;
         $this->authorization = $authorization;
         $this->scopeConfig = $scopeConfig;
         $this->encryptor = $encryptor;
@@ -131,35 +147,75 @@ class ConfigEntryRepository implements ConfigEntryRepositoryInterface
         $entries = [];
 
         foreach ($collection->getItems() as $item) {
-            $itemPath = (string)$item->getData('path');
-            $isEncrypted = $this->encryptedPathResolver->isEncrypted($itemPath);
-            $rawValue = $item->getData('value');
-
-            if ($isEncrypted && !$revealEncrypted) {
-                $value = self::REDACTED_PLACEHOLDER;
-            } elseif ($isEncrypted && $revealEncrypted) {
-                // Encryptor::decrypt() returns '' rather than throwing when the key
-                // version the ciphertext asks for is missing (e.g. after a key
-                // rotation) - that empty string is indistinguishable here from a
-                // genuinely empty value.
-                $value = $rawValue === null ? null : $this->encryptor->decrypt((string)$rawValue);
-            } else {
-                $value = $rawValue === null ? null : (string)$rawValue;
-            }
-
-            /** @var ConfigEntryInterface $entry */
-            $entry = $this->configEntryFactory->create();
-            $entry->setConfigId((int)$item->getData('config_id'))
-                ->setPath($itemPath)
-                ->setScope((string)$item->getData('scope'))
-                ->setScopeId((int)$item->getData('scope_id'))
-                ->setValue($value)
-                ->setIsEncrypted($isEncrypted);
-
-            $entries[] = $entry;
+            $entries[] = $this->buildEntry($item, $revealEncrypted);
         }
 
         return $entries;
+    }
+
+    /**
+     * @param \BroCode\ConfigExplorer\Model\ConfigData $item
+     * @return ConfigEntryInterface
+     */
+    private function buildEntry($item, bool $revealEncrypted): ConfigEntryInterface
+    {
+        $path = (string)$item->getData('path');
+        $scope = (string)$item->getData('scope');
+        $scopeId = (int)$item->getData('scope_id');
+        $isEncrypted = $this->encryptedPathResolver->isEncrypted($path);
+        $rawDbValue = $item->getData('value');
+        $rawDbValue = $rawDbValue === null ? null : (string)$rawDbValue;
+
+        $origin = $this->valueOriginResolver->resolve($path, $scope, $scopeId);
+        [$value, $dbValue] = $this->resolveValues($isEncrypted, $revealEncrypted, $rawDbValue, $origin);
+
+        /** @var ConfigEntryInterface $entry */
+        $entry = $this->configEntryFactory->create();
+        $entry->setConfigId((int)$item->getData('config_id'))
+            ->setPath($path)
+            ->setScope($scope)
+            ->setScopeId($scopeId)
+            ->setValue($value)
+            ->setIsEncrypted($isEncrypted)
+            ->setOriginSource($origin !== null ? $origin->getFileName() : null)
+            ->setDbValue($dbValue);
+
+        return $entry;
+    }
+
+    /**
+     * The effective value (DB row, unless a deployment-config file shadows it) and,
+     * only when something does shadow it, the DB row's own value alongside it.
+     * Encrypted paths redact both regardless of reveal, unless reveal was granted -
+     * in which case whichever ciphertext is actually in play (the shadowing file's,
+     * if there is one, otherwise the DB row's) gets decrypted, same as the DB row
+     * would have been before this method existed.
+     *
+     * @return array{0: string|null, 1: string|null}
+     */
+    private function resolveValues(
+        bool $isEncrypted,
+        bool $revealEncrypted,
+        ?string $rawDbValue,
+        ?ValueOrigin $origin
+    ): array {
+        $effectiveRaw = $origin !== null ? (string)$origin->getValue() : $rawDbValue;
+
+        if (!$isEncrypted) {
+            return [$effectiveRaw, $origin !== null ? $rawDbValue : null];
+        }
+
+        if (!$revealEncrypted) {
+            return [self::REDACTED_PLACEHOLDER, $origin !== null ? self::REDACTED_PLACEHOLDER : null];
+        }
+
+        // Encryptor::decrypt() returns '' rather than throwing when the key version
+        // the ciphertext asks for is missing (e.g. after a key rotation) - that empty
+        // string is indistinguishable here from a genuinely empty value.
+        $value = $effectiveRaw === null ? null : $this->encryptor->decrypt($effectiveRaw);
+        $dbValue = $origin === null || $rawDbValue === null ? null : $this->encryptor->decrypt($rawDbValue);
+
+        return [$value, $origin !== null ? $dbValue : null];
     }
 
     /**

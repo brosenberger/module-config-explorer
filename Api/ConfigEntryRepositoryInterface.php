@@ -39,10 +39,16 @@ interface ConfigEntryRepositoryInterface
     /**
      * Return core_config_data rows matching the given filters.
      *
+     * Each entry's getValue() is the value Magento actually serves - the DB row
+     * unless app/etc/config.php or app/etc/env.php locks it, in which case the
+     * locked value is returned instead and the DB row's own value is still
+     * available via getDbValue()/getOriginSource() (see ConfigEntryInterface).
+     *
      * Redaction is applied in this order:
-     * 1. A row whose path is not encrypted always returns its plain value.
+     * 1. A row whose path is not encrypted always returns its plain (effective) value.
      * 2. An encrypted row with $revealEncrypted false returns the redaction
-     *    placeholder. This is the default for every caller.
+     *    placeholder for both getValue() and getDbValue(). This is the default for
+     *    every caller.
      * 3. An encrypted row with $revealEncrypted true requires all three of:
      *    the brocode_config_explorer/general/allow_encrypted_reveal system toggle,
      *    the BroCode_ConfigExplorer::config_view_encrypted ACL resource, and this

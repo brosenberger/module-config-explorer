@@ -107,4 +107,32 @@ class ConfigEntry extends DataObject implements ConfigEntryInterface
 
         return $this;
     }
+
+    public function getOriginSource(): ?string
+    {
+        $originSource = $this->getData(self::ORIGIN_SOURCE);
+
+        return $originSource === null ? null : (string)$originSource;
+    }
+
+    public function setOriginSource(?string $originSource): ConfigEntryInterface
+    {
+        $this->setData(self::ORIGIN_SOURCE, $originSource);
+
+        return $this;
+    }
+
+    public function getDbValue(): ?string
+    {
+        $dbValue = $this->getData(self::DB_VALUE);
+
+        return $dbValue === null ? null : (string)$dbValue;
+    }
+
+    public function setDbValue(?string $dbValue): ConfigEntryInterface
+    {
+        $this->setData(self::DB_VALUE, $dbValue);
+
+        return $this;
+    }
 }

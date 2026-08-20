@@ -30,7 +30,9 @@ declare(strict_types=1);
 namespace BroCode\ConfigExplorer\Model;
 
 use BroCode\ConfigExplorer\Model\Config\EncryptedPathResolver;
+use BroCode\ConfigExplorer\Model\Config\ValueOriginResolver;
 use BroCode\ConfigExplorer\Model\ResourceModel\ConfigData\CollectionFactory;
+use Magento\Framework\Api\Filter;
 use Magento\Ui\DataProvider\AbstractDataProvider;
 
 /**
@@ -44,9 +46,24 @@ use Magento\Ui\DataProvider\AbstractDataProvider;
 class DataProvider extends AbstractDataProvider
 {
     /**
+     * Filter field for the scope switcher. Not a real core_config_data column, so it
+     * cannot go through the default addFieldToFilter() path - see addFilter().
+     */
+    private const EFFECTIVE_SCOPE_FIELD = 'effective_scope';
+
+    private const SCOPE_DEFAULT = 'default';
+
+    private const ORIGIN_DATABASE_LABEL = 'Database';
+
+    /**
      * @var EncryptedPathResolver
      */
     private $encryptedPathResolver;
+
+    /**
+     * @var ValueOriginResolver
+     */
+    private $valueOriginResolver;
 
     /**
      * @param string $name
@@ -54,6 +71,7 @@ class DataProvider extends AbstractDataProvider
      * @param string $requestFieldName
      * @param CollectionFactory $collectionFactory
      * @param EncryptedPathResolver $encryptedPathResolver
+     * @param ValueOriginResolver $valueOriginResolver
      * @param array $meta
      * @param array $data
      */
@@ -63,12 +81,14 @@ class DataProvider extends AbstractDataProvider
         $requestFieldName,
         CollectionFactory $collectionFactory,
         EncryptedPathResolver $encryptedPathResolver,
+        ValueOriginResolver $valueOriginResolver,
         array $meta = [],
         array $data = []
     ) {
         parent::__construct($name, $primaryFieldName, $requestFieldName, $meta, $data);
         $this->collection = $collectionFactory->create();
         $this->encryptedPathResolver = $encryptedPathResolver;
+        $this->valueOriginResolver = $valueOriginResolver;
     }
 
     /**
@@ -83,14 +103,73 @@ class DataProvider extends AbstractDataProvider
         }
 
         foreach ($data['items'] as $key => $item) {
-            $isEncrypted = $this->encryptedPathResolver->isEncrypted((string)($item['path'] ?? ''));
+            $path = (string)($item['path'] ?? '');
+            $isEncrypted = $this->encryptedPathResolver->isEncrypted($path);
             $data['items'][$key]['is_encrypted'] = $isEncrypted ? 1 : 0;
+
+            $rawDbValue = $item['value'] ?? null;
+            $origin = $this->valueOriginResolver->resolve(
+                $path,
+                (string)($item['scope'] ?? ''),
+                (int)($item['scope_id'] ?? 0)
+            );
 
             if ($isEncrypted) {
                 $data['items'][$key]['value'] = ConfigEntryRepository::REDACTED_PLACEHOLDER;
+                if ($origin !== null) {
+                    $data['items'][$key]['db_value'] = ConfigEntryRepository::REDACTED_PLACEHOLDER;
+                }
+            } elseif ($origin !== null) {
+                $data['items'][$key]['value'] = $origin->getValue();
+                $data['items'][$key]['db_value'] = $rawDbValue;
             }
+
+            $data['items'][$key]['origin_source'] = $origin !== null ? $origin->getFileName() : null;
+            // Separate from origin_source: the icon's tooltip logic keys off
+            // origin_source being null ("nothing to show"), but the grid column
+            // needs a non-empty label for every row, "Database" included.
+            $data['items'][$key]['origin_label'] = $origin !== null ? $origin->getFileName() : self::ORIGIN_DATABASE_LABEL;
         }
 
         return $data;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function addFilter(Filter $filter)
+    {
+        if ($filter->getField() === self::EFFECTIVE_SCOPE_FIELD) {
+            $this->applyEffectiveScopeFilter((string)$filter->getValue());
+
+            return;
+        }
+
+        parent::addFilter($filter);
+    }
+
+    /**
+     * Decodes the scope switcher's encoded option value ("default", "websites:1",
+     * "stores:2") and forwards it to the collection's inheritance-aware filter.
+     */
+    private function applyEffectiveScopeFilter(string $value): void
+    {
+        if ($value === '') {
+            return;
+        }
+
+        if ($value === self::SCOPE_DEFAULT) {
+            $this->getCollection()->filterByEffectiveScope(self::SCOPE_DEFAULT, null);
+
+            return;
+        }
+
+        [$scope, $scopeId] = array_pad(explode(':', $value, 2), 2, null);
+
+        if ($scope === null || $scopeId === null || !is_numeric($scopeId)) {
+            return;
+        }
+
+        $this->getCollection()->filterByEffectiveScope($scope, (int)$scopeId);
     }
 }

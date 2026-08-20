@@ -32,9 +32,19 @@ namespace BroCode\ConfigExplorer\Api\Data;
 /**
  * Read-only representation of a single core_config_data row.
  *
- * When a row is encrypted and redaction applies, getValue() returns the redaction
- * placeholder — never null and never the ciphertext — while getIsEncrypted() returns
- * true, so a consumer can tell "redacted" apart from "genuinely empty".
+ * getValue() is the value Magento actually serves for this path/scope/scopeId - the
+ * core_config_data row unless app/etc/config.php or app/etc/env.php locks it, in
+ * which case the locked value wins. getOriginSource() names the file that won
+ * ("config.php" / "env.php" / any other file a module registers with
+ * Magento\Framework\Config\File\ConfigFilePool), or null when the DB row itself is
+ * authoritative. getDbValue() is the shadowed DB row's value, present only when
+ * getOriginSource() is non-null - there being nothing to hide when nothing is
+ * shadowed.
+ *
+ * When a row is encrypted, getValue() and getDbValue() both return the redaction
+ * placeholder unless reveal was explicitly granted for this request - never null,
+ * never the ciphertext - while getIsEncrypted() returns true, so a consumer can tell
+ * "redacted" apart from "genuinely empty".
  */
 interface ConfigEntryInterface
 {
@@ -44,6 +54,8 @@ interface ConfigEntryInterface
     public const SCOPE_ID = 'scope_id';
     public const VALUE = 'value';
     public const IS_ENCRYPTED = 'is_encrypted';
+    public const ORIGIN_SOURCE = 'origin_source';
+    public const DB_VALUE = 'db_value';
 
     /**
      * Primary key from core_config_data.
@@ -123,4 +135,32 @@ interface ConfigEntryInterface
      * @return \BroCode\ConfigExplorer\Api\Data\ConfigEntryInterface
      */
     public function setIsEncrypted(bool $isEncrypted): ConfigEntryInterface;
+
+    /**
+     * Name of the deployment-config file shadowing this row, or null when the
+     * core_config_data row itself is what Magento serves.
+     *
+     * @return string|null
+     */
+    public function getOriginSource(): ?string;
+
+    /**
+     * @param string|null $originSource
+     * @return \BroCode\ConfigExplorer\Api\Data\ConfigEntryInterface
+     */
+    public function setOriginSource(?string $originSource): ConfigEntryInterface;
+
+    /**
+     * The core_config_data row's own value, when getOriginSource() is shadowing it.
+     * Null whenever getOriginSource() is null - there is nothing shadowed to show.
+     *
+     * @return string|null
+     */
+    public function getDbValue(): ?string;
+
+    /**
+     * @param string|null $dbValue
+     * @return \BroCode\ConfigExplorer\Api\Data\ConfigEntryInterface
+     */
+    public function setDbValue(?string $dbValue): ConfigEntryInterface;
 }
