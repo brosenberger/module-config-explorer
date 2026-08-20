@@ -50,6 +50,12 @@ class Index extends Action
     }
 
     /**
+     * The AJAX "Effective Scope" toolbar filter gets its own reactive notice in JS
+     * (view/adminhtml/web/js/grid/scope-notice.js) - it never leaves this action, so
+     * a JS-side message is enough there. The page-header store switcher instead does
+     * a full reload, landing back here with a "store" request param; this is the one
+     * place that reload passes through, so this is where that path's notice belongs.
+     *
      * @return Page
      */
     public function execute()
@@ -57,6 +63,15 @@ class Index extends Action
         $resultPage = $this->resultPageFactory->create();
         $resultPage->setActiveMenu(self::ADMIN_RESOURCE);
         $resultPage->getConfig()->getTitle()->prepend(__('Config Data Explorer'));
+
+        if ((int)$this->getRequest()->getParam('store') > 0) {
+            $this->messageManager->addNoticeMessage(
+                __(
+                    'Showing every configuration value relevant to this scope: default values not '
+                    . 'overridden here, plus this scope\'s own overrides.'
+                )
+            );
+        }
 
         return $resultPage;
     }

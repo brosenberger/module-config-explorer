@@ -45,6 +45,22 @@
             </filterSelect>
         </filters>
         <paging name="listing_paging"/>
+        <!--
+            Reacts to the AJAX "Effective Scope" filter above - hidden while it's
+            unset or set to "default", visible for any website/store selection. The
+            page-header store switcher's own equivalent notice is a full-reload
+            message added server-side, in Controller/Adminhtml/Index/Index.php - it
+            never touches this filter, so this component can't cover that path too.
+        -->
+        <container name="scope_notice" component="BroCode_ConfigExplorer/js/grid/scope-notice">
+            <argument name="data" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="scopeFilterName" xsi:type="string">brocode_configexplorer_listing.brocode_configexplorer_listing.listing_top.listing_filters.effective_scope</item>
+                    <item name="content" xsi:type="string" translate="true">Showing every configuration value relevant to this scope: default values not overridden here, plus this scope's own overrides.</item>
+                    <item name="additionalClasses" xsi:type="string">message message-notice brocode-config-explorer-scope-notice</item>
+                </item>
+            </argument>
+        </container>
     </listingToolbar>
     <columns name="brocode_configexplorer_columns">
         <settings>
